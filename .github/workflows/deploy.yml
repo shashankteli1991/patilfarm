@@ -1,0 +1,114 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      
+      # ==========================================
+      # 1. CHECKOUT CODE
+      # ==========================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ==========================================
+      # 2. INSTALL NODE.js
+      # ==========================================
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ==========================================
+      # 3. INSTALL DEPENDENCIES
+      # ==========================================
+      - name: Install Dependencies
+        run: |
+          npm ci
+
+      # ==========================================
+      # 4. GENERATE PRISMA CLIENT
+      # ==========================================
+      - name: Generate Prisma Client
+        run: |
+          npx prisma generate
+
+      # ==========================================
+      # 5. BUILD NEXT.JS
+      # ==========================================
+      - name: Build Next.js
+        run: |
+          npm run build
+
+      # ==========================================
+      # 6. COPY .env FILE (FROM SECRETS)
+      # ==========================================
+      - name: Setup .env file
+        run: |
+          cat > .env << EOF
+          DATABASE_URL=file:./dev.db
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          SMTP_HOST=smtp.gmail.com
+          SMTP_PORT=587
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASS=${{ secrets.SMTP_PASS }}
+          MAIL_FROM=Patil Mango Farm <${{ secrets.SMTP_USER }}>
+          OWNER_EMAIL=${{ secrets.SMTP_USER }}
+          SITE_URL=http://${{ secrets.EC2_PUBLIC_IP }}:3000
+          EOF
+
+      # ==========================================
+      # 7. DEPLOY VIA SSH
+      # ==========================================
+      - name: Deploy to EC2
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.EC2_PUBLIC_IP }}
+          username: ec2-user  # Amazon Linux
+          # OR: username: ubuntu  # Ubuntu Server
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          # Upload these files/folders
+          source: |
+            .next
+            package.json
+            package-lock.json
+            prisma
+            src
+            next.config.ts
+            run-prod.sh  # optional start script
+          # Remote directory
+          target: /home/ec2-user/PatilFarm_Upgrade
+
+      # ==========================================
+      # 8. RESTART APPLICATION
+      # ==========================================
+      - name: Restart Application via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_PUBLIC_IP }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          # Commands to run on EC2
+          script: |
+            cd /home/ec2-user/PatilFarm_Upgrade
+            npm ci
+            npx prisma generate
+            # If using SQLite:
+            mkdir -p data
+            touch data/dev.db
+            # Restart with PM2 or npm start
+            pm2 restart all  # OR: npm start &
+          # If NOT using PM2:
+          # script: |
+          #   cd /home/ec2-user/PatilFarm_Upgrade
+          #   npm ci
+          #   npx prisma generate
+          #   nohup npm start > /tmp/app.log 2>&1 &
+          #   echo "Application restarted"
