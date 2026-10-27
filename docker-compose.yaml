@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # The Next.js application
+  app:
+    build: .
+    container_name: patilfarm-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # Host:Container port mapping
+    environment:
+      - NODE_ENV=production
+      # These will override .env at runtime via docker run -e or compose env_file
+      - DATABASE_URL=file:./data/dev.db
+      - JWT_SECRET=patil-farm-super-secret-change-in-production
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=teli9861shashank@gmail.com
+      - SMTP_PASS=YOUR_VISUAL_APP_PASSWORD  # <-- Replace with actual Gmail App Password
+      - MAIL_FROM=Patil Mango Farm <teli9861shashank@gmail.com>
+      - OWNER_EMAIL=teli9861shashank@gmail.com
+      - SITE_URL=http://localhost:3000
+    volumes:
+      - patilfarm-data:/app/data  # Persist SQLite database
+
+volumes:
+  patilfarm-data:
+    driver: local

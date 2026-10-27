@@ -1,0 +1,117 @@
+// Prisma Schema for Patil Farm - Local Mango E-Commerce
+// Konkan (Ratnagiri/Devgad) Alphonso mangoes delivered in Mumbai region.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String // Hashed password for admin
+  name      String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+}
+
+model ServiceableArea {
+  id      String @id @default(cuid())
+  city    String
+  pincode String @unique
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PROCESSING
+  IN_PROGRESS
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  email     String?
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  customerId      String
+  phone           String
+  email           String?
+  addressLine1    String
+  addressLine2    String?
+  landmark        String?
+  city            String
+  pincode         String
+  deliveryNotes   String?
+  totalAmount     Float
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  paymentId       String?
+  paymentLink     String?
+  // Set once the stock held for this order has been either
+  // committed (Accept) or returned to available stock (Reject).
+  // Prevents double-counting if the owner changes the decision twice.
+  stockSettled    Boolean       @default(false)
+  rejectionReason String?
+  decidedAt       DateTime?
+  orderYear       Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  order     Order   @relation(fields: [orderId], references: [id])
+  orderId   String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  productName String
+  quantity  Int // Quantity in dozens
+  unitType  String
+  price     Float // Historical price per dozen at purchase
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  name          String      @unique
+  variety       String
+  origin        String
+  description   String
+  unitType      String // e.g., "Dozen"
+  price         Float // Price per dozen
+  stockInDozens Int         @default(0)
+  isActive      Boolean     @default(true)
+  imageUrl      String
+  tag           String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  orderItems    OrderItem[]
+}

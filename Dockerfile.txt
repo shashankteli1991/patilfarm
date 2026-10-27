@@ -1,0 +1,58 @@
+# ==================== BUILD STAGE ====================
+# Use Node.js LTS (alpine is smaller but may have bcrypt issues; using standard)
+FROM node:20-alpine AS builder
+
+# Create app directory
+WORKDIR /app
+
+# Install dependencies first (better caching)
+COPY package-lock.json* package.json* ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# ⚠️ CRITICAL: Generate Prisma client BEFORE build
+# This ensures the client is compiled for the correct platform
+RUN npx prisma generate
+
+# Build Next.js app
+RUN npm run build
+
+# ==================== PRODUCTION STAGE ====================
+FROM node:20-alpine AS production
+
+# Create app directory
+WORKDIR /app
+
+# Create a non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy built artifacts from builder stage
+COPY --from=builder /app/package-lock.json* /app/package.json* ./
+RUN npm ci --omit=dev
+
+# Copy .env file (will be overridden at runtime via docker run -env)
+# Make sure your .env is in the same directory as Dockerfile when building
+COPY --from=builder /app/.env ./.env 2>/dev/null || true
+
+# Copy built Next.js output and Prisma
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+
+# ⚠️ IMPORTANT: Do NOT copy node_modules from host if you want smaller image
+# Instead, install only production deps above
+
+# Set permissions
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose the port Next.js runs on
+EXPOSE 3000
+
+# Start the application
+# --illuminate-on-naive-usage is optional but helpful
+CMD ["npm", "start"]
